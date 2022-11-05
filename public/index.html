@@ -1,0 +1,303 @@
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    body {
+        box-shadow: inset 0 4px 0 #f28181, inset 0 8px 0 #f2a581, inset 0 12px 0 #f2eb81, inset 0 16px 0 #7fbb81, inset 0 20px 0 #7f91de, inset 0 24px 0 #9f80de;
+        padding-top: 24px;
+        display: flex;
+        flex-direction: row;
+        background: #eee;
+        font-family: sans-serif;
+    }
+
+    #messages {
+        flex-grow: 1;
+        overflow-x: hidden;
+        overflow-y: auto;
+        border: 2px inset #ccc;
+        margin: 0.5rem;
+        margin-bottom: 0;
+    }
+
+    #message:focus {
+        border-color: #444;
+    }
+
+    #messageForm {
+        width: 100%;
+        flex-grow: 0;
+        flex-shrink: 0;
+        margin: 0;
+        padding: 0.5rem;
+    }
+
+    #message {
+        width: 100%;
+        height: 100%;
+        resize: none;
+        font: inherit;
+        margin: 0;
+        padding: 0;
+        color: inherit;
+        border: 2px inset #ccc;
+        background: #fff;
+        outline: none;
+    }
+
+    main {
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    aside {
+        width: 13rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .targets {
+        flex-grow: 1;
+        margin: 0.5rem;
+        border: 2px inset #ccc;
+        margin-right: 0;
+        padding: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        display: flex;
+        flex-direction: column;
+        flex-direction: column;
+    }
+
+    header {
+        display: flex;
+        align-items: center;
+        margin: 0.5rem 0.5rem 0;
+        height: 1.5rem;
+    }
+
+    .targets li::before {
+        content: "";
+        width: 0.75rem;
+        height: 1.25rem;
+        border-left: 2px solid #888;
+        border-bottom: 2px solid #888;
+        display: block;
+        position: absolute;
+        left: -1.25rem;
+        top: -0.6rem;
+    }
+
+    .targets li {
+        position: relative;
+        display: flex;
+    }
+
+    .targets ul {
+        padding-left: 1.5rem;
+        margin: 0;
+    }
+
+    .targets a, summary span {
+        text-decoration: none;
+        color: #000;
+        background: #dadada;
+        padding: 0.15rem;
+        outline: none;
+        user-select: none;
+        cursor: pointer;
+    }
+summary {
+    outline: none;
+}
+summary:focus span, .targets li a:focus {
+    background: #0e0c6f;
+    color: #fff;
+}
+.targets li, .targets summary, .targets details {
+    margin-bottom: 0.5rem;
+    width: fit-content;
+    height: fit-content;
+    display: inline-flex;
+    align-items: center;
+}
+.nothingHere {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+}
+.nothingHere i {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    opacity: 0.85;
+}
+.nothingHere span {
+    opacity: 0.75;
+}
+.nick {
+    color: #2d439f;
+}
+.nick::after {
+    content: ": ";
+    color: initial;
+}
+</style>
+<aside>
+    <header>
+        <span class="logo">whyrc</span>
+    </header>
+    <div class="targets">
+        <details id="channels">
+            <summary><span>Channels</span></summary>
+            <ul>
+                <li>
+                    <a href="#!/channel/#general">#general</a>
+                </li>
+            </ul>
+        </details>
+        <details id="users">
+            <summary><span>Users</span></summary>
+            <ul>
+                <li>
+                    <a href="#!/dm/easrng">@easrng</a>
+                </li>
+            </ul>
+        </details>
+    </div>
+</aside>
+<main>
+    <header>
+        <span id="title"></span>
+    </header>
+    <div id="messages">
+
+    </div>
+    <div id="messageForm">
+        <textarea id="message"></textarea>
+    </div>
+</main>
+<script type="module">
+    import * as sockly from 'https://cdn.skypack.dev/sockly';
+    import htm from 'https://cdn.skypack.dev/htm';
+    const h=htm.bind((type,props,...children)=>{
+        let e=document.createElement(type)
+        Object.assign(e, props)
+        e.append(...children)
+        return e
+    });
+    (async()=>{
+        let scrollback={}
+        let currentTarget;
+        let actions=(async()=>{
+            let w=new WebSocket("ws://localhost:8119/connect")
+            console.log("connecting...")
+            await new Promise(cb=>w.onopen=cb)
+            console.log("connected")
+            sockly.expose({message}, w)
+            return sockly.link(w)
+        })()
+        window.scrollback=scrollback;
+        let nick=(async()=>await (await actions).nick())();
+        console.log(nick)
+        let elements = {
+            channels: {
+                details: document.querySelector("#channels"),
+                list: document.querySelector("#channels ul")
+            },
+            users: {
+                details: document.querySelector("#users"),
+                list: document.querySelector("#users ul")
+            },
+            messages: document.querySelector("#messages"),
+            title: document.querySelector("#title"),
+            messageBox: document.querySelector("#message"),
+            messageForm: document.querySelector("#messageForm")
+        }
+        elements.messageBox.onkeyup=e=>{
+            if(e.keyCode==13&&!e.shiftKey){
+                e.preventDefault()
+                if(currentTarget){
+                    (async()=>{
+                        let message=elements.messageBox.value;
+                        await (await actions).send(currentTarget, message)
+                        elements.messages.appendChild(makeMessage({target:currentTarget, nick: await nick, message, from_server: false}))
+                        elements.messageBox.value=""
+                    })()
+                }
+            }
+        }
+        const makeMessage=o=>(h`
+            <div className="message">
+                <span className="nick">${o.nick}</span>
+                <span className="content">${o.message}</span>
+            </div>
+        `);
+        function message(target, nick, message, tags, hostname, ident, from_server){
+            scrollback[target]=scrollback[target]||[]
+            scrollback[target].push({target, nick, message, tags, hostname, ident, from_server})
+            if(currentTarget==target){
+                elements.messages.appendChild(makeMessage({target, nick, message, tags, hostname, ident, from_server}))
+            }
+        }
+        let routes = {
+            index: {
+                load(){
+                    elements.title.textContent="Home"
+                    elements.messages.classList.add("nothingHere")
+                    elements.messages.append(...h`
+                        <i>There's nothing here</i>
+                        <span>You look around for a channel to open.</span>
+                    `);
+                }
+              },
+            channel: {
+                async load(channel){
+                    currentTarget=channel;
+                    await (await actions).join(channel)
+                    elements.title.textContent=channel
+                    elements.channels.details.open=true
+                }
+            },
+            dm: {
+                async load(user){
+                    currentTarget=user;
+                    elements.title.textContent="@"+user
+                    elements.users.details.open=true
+                }
+            }
+        };
+        const doRoute = e => {
+            if (e) e.preventDefault();
+            if (!location.hash.startsWith("#!/")) location.replace("#!/");
+            let path = location.hash.slice("#!/".length).split("/");
+            if (!path[0]) path[0] = "index";
+            if (path[0] && routes[path[0]]) {
+                document.documentElement.dataset.page = path[0];
+                elements.messages.className=""
+                elements.messages.innerHTML=""
+                currentTarget=null;
+                try{
+                    routes[path[0]].load(...path.slice(1))
+                }catch(e){
+                    console.error(e)
+                    location.replace("#!/");
+                }
+              } else {
+                location.replace("#!/");
+            }
+        };
+        doRoute();
+        window.addEventListener("hashchange", doRoute);
+    })()
+</script>
